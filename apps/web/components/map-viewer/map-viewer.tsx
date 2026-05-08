@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useConfiguratorStore } from '@/lib/store/configurator'
+import { generateShapeGeoJSON } from '@/features/map/shape-geojson'
 import type { RouteColor } from '@/types/configurator'
 
 const ROUTE_COLOR_HEX: Record<RouteColor, string> = {
@@ -23,10 +24,12 @@ const TILE_URL =
 export function MapViewer() {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
+  const mapLoadedRef = useRef(false)
 
   const routeCoordinates = useConfiguratorStore((s) => s.routeCoordinates)
   const routeBounds = useConfiguratorStore((s) => s.routeBounds)
   const routeColor = useConfiguratorStore((s) => s.routeColor)
+  const shape = useConfiguratorStore((s) => s.shape)
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
@@ -72,6 +75,23 @@ export function MapViewer() {
       })
 
       if (routeBounds) {
+        map.addSource('shape', {
+          type: 'geojson',
+          data: generateShapeGeoJSON(routeBounds, shape),
+        })
+        map.addLayer({
+          id: 'shape-fill',
+          type: 'fill',
+          source: 'shape',
+          paint: { 'fill-color': '#18181b', 'fill-opacity': 0.08 },
+        })
+        map.addLayer({
+          id: 'shape-stroke',
+          type: 'line',
+          source: 'shape',
+          paint: { 'line-color': '#18181b', 'line-width': 2, 'line-opacity': 0.6 },
+        })
+
         map.fitBounds(
           [
             [routeBounds.minLng, routeBounds.minLat],
@@ -80,13 +100,24 @@ export function MapViewer() {
           { padding: 48, animate: false },
         )
       }
+
+      mapLoadedRef.current = true
     })
 
     return () => {
+      mapLoadedRef.current = false
       map.remove()
       mapRef.current = null
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapLoadedRef.current || !routeBounds) return
+    ;(map.getSource('shape') as maplibregl.GeoJSONSource).setData(
+      generateShapeGeoJSON(routeBounds, shape),
+    )
+  }, [shape, routeBounds]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!routeCoordinates) {
     return (

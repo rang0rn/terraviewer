@@ -1,4 +1,5 @@
 import { MapViewer } from '@/components/map-viewer/map-viewer'
+import { ShapeToggle } from '@/components/map-viewer/shape-toggle'
 
 export default function MapStep() {
   return (
@@ -8,6 +9,9 @@ export default function MapStep() {
         <p className="mt-1 text-sm text-ink/60">
           Prüfe deine Route und wähle die gewünschte Ausschnittform.
         </p>
+      </div>
+      <div className="mb-4">
+        <ShapeToggle />
       </div>
       <MapViewer />
     </div>
