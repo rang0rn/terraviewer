@@ -7,11 +7,11 @@ import { useConfiguratorStore } from '@/lib/store/configurator'
 import type { TerrainData } from '@/types/terrain'
 import type { RouteBounds } from '@/types/configurator'
 
-const ELEVATION_SCALE: Record<number, number> = { 1: 0.4, 2: 0.7, 3: 1.1 }
-// Sockel uses BoxGeometry(SOCKEL_BOX, SOCKEL_HEIGHT, SOCKEL_BOX) so it fully
-// covers the 2×2 PlaneGeometry including corners (max radius = sqrt(2) ≈ 1.41).
+const ELEVATION_SCALE: Record<number, number> = { 1: 0.18, 2: 0.32, 3: 0.5 }
+// Sockel cylinder radius sqrt(2)*1.02≈1.45 covers all PlaneGeometry corners
+// (corner distance from Y-axis = sqrt(2)≈1.41 < 1.45).
 const SOCKEL_HEIGHT = 0.14
-const SOCKEL_BOX = 2.05
+const SOCKEL_RADIUS = Math.sqrt(2) * 1.02
 const ROUTE_TUBE_RADIUS = 0.015
 const MAX_ROUTE_POINTS = 200
 
@@ -133,9 +133,9 @@ export function TerrainMesh({
         />
       </mesh>
 
-      {/* BoxGeometry sockel covers the full PlaneGeometry footprint including corners */}
+      {/* CylinderGeometry sockel matches the terrain shape; radius 1.45 covers all plane corners */}
       <mesh position={[0, -SOCKEL_HEIGHT / 2, 0]}>
-        <boxGeometry args={[SOCKEL_BOX, SOCKEL_HEIGHT, SOCKEL_BOX]} />
+        <cylinderGeometry args={[SOCKEL_RADIUS, SOCKEL_RADIUS, SOCKEL_HEIGHT, shape === 'circle' ? 64 : 6]} />
         <meshStandardMaterial color={TERRAIN_COLOR[terrainColor] ?? '#888888'} />
       </mesh>
 
