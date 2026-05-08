@@ -4,7 +4,8 @@ import { getStorageAdapter } from '@/lib/storage/get-storage'
 import { checkRateLimit } from '@/lib/upload/rate-limit'
 import type { UploadResponse } from '@/types/upload'
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024
+const MAX_FILE_SIZE = parseInt(process.env.MAX_UPLOAD_SIZE_BYTES ?? '', 10) || 10 * 1024 * 1024
+const MAX_FILE_SIZE_MB = Math.round(MAX_FILE_SIZE / (1024 * 1024))
 const ALLOWED_MIME_TYPES = ['application/gpx+xml', 'text/xml', 'application/xml', 'application/octet-stream']
 
 export async function POST(request: NextRequest): Promise<NextResponse<UploadResponse>> {
@@ -44,7 +45,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<UploadRes
 
   if (file.size > MAX_FILE_SIZE) {
     return NextResponse.json(
-      { success: false, errorCode: 'FILE_TOO_LARGE', message: 'Datei zu groß. Maximal 10 MB erlaubt.' },
+      { success: false, errorCode: 'FILE_TOO_LARGE', message: `Datei zu groß. Maximal ${MAX_FILE_SIZE_MB} MB erlaubt.` },
       { status: 413 }
     )
   }
