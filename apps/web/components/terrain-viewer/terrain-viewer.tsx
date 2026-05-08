@@ -7,13 +7,29 @@ import { detectWebGL2 } from '@/lib/webgl/detect-webgl2'
 import { useConfiguratorStore } from '@/lib/store/configurator'
 import { TerrainMesh } from './terrain-mesh'
 import type { TerrainData } from '@/types/terrain'
+import type { RouteBounds } from '@/types/configurator'
+
+// 35% padding ensures route's tight bounding box maps to ~0.59 normalized,
+// so even the worst-case corners (0.59*sqrt(2)≈0.83) fit within the circle/hexagon.
+const PAD_FACTOR = 0.35
+
+function padBounds(b: RouteBounds): RouteBounds {
+  const latSpan = b.maxLat - b.minLat
+  const lngSpan = b.maxLng - b.minLng
+  return {
+    minLat: b.minLat - latSpan * PAD_FACTOR,
+    maxLat: b.maxLat + latSpan * PAD_FACTOR,
+    minLng: b.minLng - lngSpan * PAD_FACTOR,
+    maxLng: b.maxLng + lngSpan * PAD_FACTOR,
+  }
+}
 
 function detectQuality(): 'mobile' | 'preview' {
   if (typeof window === 'undefined') return 'preview'
   return window.innerWidth < 768 ? 'mobile' : 'preview'
 }
 
-function Scene({ terrain }: { terrain: TerrainData }) {
+function Scene({ terrain, terrainBounds }: { terrain: TerrainData; terrainBounds: RouteBounds }) {
   return (
     <>
       <ambientLight intensity={0.5} />
@@ -26,7 +42,7 @@ function Scene({ terrain }: { terrain: TerrainData }) {
         minDistance={2}
         maxDistance={10}
       />
-      <TerrainMesh terrain={terrain} />
+      <TerrainMesh terrain={terrain} terrainBounds={terrainBounds} />
     </>
   )
 }
@@ -34,6 +50,7 @@ function Scene({ terrain }: { terrain: TerrainData }) {
 export function TerrainViewer() {
   const [webglSupported, setWebglSupported] = useState<boolean | null>(null)
   const [terrain, setTerrain] = useState<TerrainData | null>(null)
+  const [terrainBounds, setTerrainBounds] = useState<RouteBounds | null>(null)
   const [error, setError] = useState<string | null>(null)
   const routeBounds = useConfiguratorStore((s) => s.routeBounds)
 
@@ -43,13 +60,13 @@ export function TerrainViewer() {
 
   useEffect(() => {
     if (!routeBounds) return
-    const { minLat, maxLat, minLng, maxLng } = routeBounds
+    const padded = padBounds(routeBounds)
     const quality = detectQuality()
     const params = new URLSearchParams({
-      minLat: String(minLat),
-      maxLat: String(maxLat),
-      minLng: String(minLng),
-      maxLng: String(maxLng),
+      minLat: String(padded.minLat),
+      maxLat: String(padded.maxLat),
+      minLng: String(padded.minLng),
+      maxLng: String(padded.maxLng),
       quality,
     })
 
@@ -58,6 +75,7 @@ export function TerrainViewer() {
       .then((data) => {
         if (data.success) {
           setTerrain(data.terrain)
+          setTerrainBounds(padded)
         } else {
           setError('Geländedaten konnten nicht geladen werden.')
         }
@@ -87,7 +105,7 @@ export function TerrainViewer() {
     )
   }
 
-  if (!terrain) {
+  if (!terrain || !terrainBounds) {
     return (
       <div className="flex h-[480px] items-center justify-center rounded-xl bg-ink/5 text-sm text-ink/40">
         Keine GPX-Daten vorhanden.
@@ -102,7 +120,7 @@ export function TerrainViewer() {
         frameloop="demand"
         camera={{ position: [0, 3, 5], fov: 45 }}
       >
-        <Scene terrain={terrain} />
+        <Scene terrain={terrain} terrainBounds={terrainBounds} />
       </Canvas>
     </div>
   )

@@ -5,9 +5,13 @@ import { useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useConfiguratorStore } from '@/lib/store/configurator'
 import type { TerrainData } from '@/types/terrain'
+import type { RouteBounds } from '@/types/configurator'
 
 const ELEVATION_SCALE: Record<number, number> = { 1: 0.4, 2: 0.7, 3: 1.1 }
-const SOCKEL_HEIGHT = 0.12
+// Sockel uses BoxGeometry(SOCKEL_BOX, SOCKEL_HEIGHT, SOCKEL_BOX) so it fully
+// covers the 2×2 PlaneGeometry including corners (max radius = sqrt(2) ≈ 1.41).
+const SOCKEL_HEIGHT = 0.14
+const SOCKEL_BOX = 2.05
 const ROUTE_TUBE_RADIUS = 0.015
 const MAX_ROUTE_POINTS = 200
 
@@ -46,8 +50,14 @@ function subsample<T>(arr: T[], maxPoints: number): T[] {
   return Array.from({ length: maxPoints }, (_, i) => arr[Math.floor(i * step)])
 }
 
-export function TerrainMesh({ terrain }: { terrain: TerrainData }) {
-  const { shape, elevationScale, terrainColor, routeColor, routeCoordinates, routeBounds } =
+export function TerrainMesh({
+  terrain,
+  terrainBounds,
+}: {
+  terrain: TerrainData
+  terrainBounds: RouteBounds
+}) {
+  const { shape, elevationScale, terrainColor, routeColor, routeCoordinates } =
     useConfiguratorStore()
   const geoRef = useRef<THREE.PlaneGeometry>(null)
   const { invalidate } = useThree()
@@ -70,9 +80,12 @@ export function TerrainMesh({ terrain }: { terrain: TerrainData }) {
         const nx = (j / (res - 1)) * 2 - 1
         const nz = (i / (res - 1)) * 2 - 1
         const ele = terrain.grid[i][j]
+        // Masked vertices go to the center of the box sockel — fully hidden inside
+        // the BoxGeometry(SOCKEL_BOX × SOCKEL_HEIGHT × SOCKEL_BOX) which covers all
+        // PlaneGeometry corners (max radius sqrt(2) < SOCKEL_BOX/2 = 1.025).
         const h = inShape(nx, nz)
           ? ((ele - terrain.minEle) / eleRange) * scaleFactor
-          : -SOCKEL_HEIGHT - 0.01  // sink masked vertices inside sockel
+          : -(SOCKEL_HEIGHT * 0.5)
 
         pos.setZ(vi, h)
       }
@@ -84,11 +97,13 @@ export function TerrainMesh({ terrain }: { terrain: TerrainData }) {
   }, [terrain, shape, elevationScale, res, eleRange, scaleFactor, inShape, invalidate])
 
   const routeTubeGeometry = useMemo(() => {
-    if (!routeCoordinates || !routeBounds) return null
-    const { minLat, maxLat, minLng, maxLng } = routeBounds
+    if (!routeCoordinates) return null
+    const { minLat, maxLat, minLng, maxLng } = terrainBounds
     const sampled = subsample(routeCoordinates, MAX_ROUTE_POINTS)
 
     const points = sampled.map(([lng, lat]) => {
+      // Map using terrainBounds (the padded bounds used to fetch the terrain grid),
+      // so the route aligns correctly with the terrain vertex positions.
       const nx = -1 + ((lng - minLng) / (maxLng - minLng)) * 2
       const nz = -1 + ((maxLat - lat) / (maxLat - minLat)) * 2
 
@@ -98,7 +113,7 @@ export function TerrainMesh({ terrain }: { terrain: TerrainData }) {
       const ele = terrain.grid[gi]?.[gj] ?? terrain.minEle
       const h = inShape(nx, nz)
         ? ((ele - terrain.minEle) / eleRange) * scaleFactor + ROUTE_TUBE_RADIUS
-        : 0
+        : -(SOCKEL_HEIGHT * 0.5)  // route points outside shape sink into sockel
 
       return new THREE.Vector3(nx, h, nz)
     })
@@ -106,9 +121,7 @@ export function TerrainMesh({ terrain }: { terrain: TerrainData }) {
     if (points.length < 2) return null
     const curve = new THREE.CatmullRomCurve3(points)
     return new THREE.TubeGeometry(curve, sampled.length * 2, ROUTE_TUBE_RADIUS, 6, false)
-  }, [routeCoordinates, routeBounds, terrain, res, eleRange, scaleFactor, inShape])
-
-  const sockelSegments = shape === 'circle' ? 64 : 6
+  }, [routeCoordinates, terrainBounds, terrain, res, eleRange, scaleFactor, inShape])
 
   return (
     <group>
@@ -120,8 +133,9 @@ export function TerrainMesh({ terrain }: { terrain: TerrainData }) {
         />
       </mesh>
 
+      {/* BoxGeometry sockel covers the full PlaneGeometry footprint including corners */}
       <mesh position={[0, -SOCKEL_HEIGHT / 2, 0]}>
-        <cylinderGeometry args={[1.02, 1.02, SOCKEL_HEIGHT, sockelSegments]} />
+        <boxGeometry args={[SOCKEL_BOX, SOCKEL_HEIGHT, SOCKEL_BOX]} />
         <meshStandardMaterial color={TERRAIN_COLOR[terrainColor] ?? '#888888'} />
       </mesh>
 
