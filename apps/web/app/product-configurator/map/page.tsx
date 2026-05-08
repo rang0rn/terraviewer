@@ -1,5 +1,6 @@
 import { MapViewer } from '@/components/map-viewer/map-viewer'
 import { ShapeToggle } from '@/components/map-viewer/shape-toggle'
+import { OutOfBoundsWarning } from '@/components/map-viewer/out-of-bounds-warning'
 
 export default function MapStep() {
   return (
@@ -12,6 +13,9 @@ export default function MapStep() {
       </div>
       <div className="mb-4">
         <ShapeToggle />
+      </div>
+      <div className="mb-4">
+        <OutOfBoundsWarning />
       </div>
       <MapViewer />
     </div>
