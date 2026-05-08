@@ -1,7 +1,7 @@
 import { XMLParser } from 'fast-xml-parser'
 import type { RouteBounds } from '@/types/configurator'
 
-type TrackPoint = { lat: number; lng: number; ele: number | null }
+export type TrackPoint = { lat: number; lng: number; ele: number | null }
 
 type ParsedGpx = {
   trackPoints: TrackPoint[]

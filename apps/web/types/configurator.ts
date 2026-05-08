@@ -25,6 +25,7 @@ export type PosterText = {
 export type ConfiguratorState = {
   gpxUrl: string | null
   routeBounds: RouteBounds | null
+  routeCoordinates: [number, number][] | null
   shape: Shape
   elevationScale: ElevationScale
   buildingsEnabled: boolean

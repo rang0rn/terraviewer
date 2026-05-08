@@ -4,6 +4,8 @@ import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useConfiguratorStore } from '@/lib/store/configurator'
 import { validateGpxFile } from '@/features/gpx/validate-client'
+import { parseGpx } from '@/lib/gpx/parser'
+import { trackPointsToLngLat } from '@/features/map/route-geojson'
 import type { UploadResponse } from '@/types/upload'
 
 type UploadState = 'idle' | 'dragging' | 'uploading' | 'error'
@@ -37,6 +39,14 @@ export function GpxDropzone() {
         setErrorMessage(data.message)
         setUploadState('error')
         return
+      }
+
+      try {
+        const gpxText = await file.text()
+        const { trackPoints } = parseGpx(gpxText)
+        updateConfig('routeCoordinates', trackPointsToLngLat(trackPoints))
+      } catch {
+        // non-fatal: map step will render an empty state
       }
 
       updateConfig('gpxUrl', data.gpxUrl)

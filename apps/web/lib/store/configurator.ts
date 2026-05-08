@@ -8,6 +8,7 @@ const STEP_ORDER: StepId[] = ['upload', 'map', 'preview', 'mockup', 'cart']
 const DEFAULT_STATE: ConfiguratorState = {
   gpxUrl: null,
   routeBounds: null,
+  routeCoordinates: null,
   shape: 'circle',
   elevationScale: 1,
   buildingsEnabled: false,

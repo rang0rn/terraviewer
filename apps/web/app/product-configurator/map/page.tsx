@@ -1,7 +1,15 @@
+import { MapViewer } from '@/components/map-viewer/map-viewer'
+
 export default function MapStep() {
   return (
-    <div className="flex flex-col items-center justify-center gap-4 py-16 text-center">
-      <p className="text-ink/40 text-sm">Step: 2D Map Viewer — TV-007</p>
+    <div className="py-6">
+      <div className="mb-6 text-center">
+        <h2 className="text-lg font-semibold text-ink">Route prüfen</h2>
+        <p className="mt-1 text-sm text-ink/60">
+          Prüfe deine Route und wähle die gewünschte Ausschnittform.
+        </p>
+      </div>
+      <MapViewer />
     </div>
   )
 }
