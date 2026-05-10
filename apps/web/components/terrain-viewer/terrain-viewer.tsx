@@ -1,12 +1,14 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
 import { detectWebGL2 } from '@/lib/webgl/detect-webgl2'
+import { detectDeviceQuality, isMobileDevice } from '@/lib/geometry/deviceQuality'
 import { useConfiguratorStore } from '@/lib/store/configurator'
 import { TerrainMesh } from './terrain-mesh'
-import type { TerrainData } from '@/types/terrain'
+import { BuildingsMesh } from './buildings-mesh'
+import type { TerrainData, BuildingFeature } from '@/types/terrain'
 import type { RouteBounds } from '@/types/configurator'
 
 // 35% padding ensures route's tight bounding box maps to ~0.59 normalized,
@@ -24,12 +26,18 @@ function padBounds(b: RouteBounds): RouteBounds {
   }
 }
 
-function detectQuality(): 'mobile' | 'preview' {
-  if (typeof window === 'undefined') return 'preview'
-  return window.innerWidth < 768 ? 'mobile' : 'preview'
-}
 
-function Scene({ terrain, terrainBounds }: { terrain: TerrainData; terrainBounds: RouteBounds }) {
+function Scene({
+  terrain,
+  terrainBounds,
+  buildings,
+  buildingsEnabled,
+}: {
+  terrain: TerrainData
+  terrainBounds: RouteBounds
+  buildings: BuildingFeature[] | null
+  buildingsEnabled: boolean
+}) {
   return (
     <>
       <ambientLight intensity={0.5} />
@@ -39,10 +47,15 @@ function Scene({ terrain, terrainBounds }: { terrain: TerrainData; terrainBounds
         makeDefault
         enablePan={false}
         enableDamping
+        dampingFactor={0.05}
         minDistance={2}
         maxDistance={10}
+        maxPolarAngle={Math.PI / 2 + 0.3}
       />
       <TerrainMesh terrain={terrain} terrainBounds={terrainBounds} />
+      {buildingsEnabled && buildings && buildings.length > 0 && (
+        <BuildingsMesh buildings={buildings} terrainBounds={terrainBounds} terrain={terrain} />
+      )}
     </>
   )
 }
@@ -52,7 +65,14 @@ export function TerrainViewer() {
   const [terrain, setTerrain] = useState<TerrainData | null>(null)
   const [terrainBounds, setTerrainBounds] = useState<RouteBounds | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [buildings, setBuildings] = useState<BuildingFeature[] | null>(null)
+  const [buildingsLoading, setBuildingsLoading] = useState(false)
+  const [canvasVisible, setCanvasVisible] = useState(false)
+  const mobileDpr = useMemo<[number, number]>(() => (isMobileDevice() ? [1, 1.5] : [1, 2]), [])
   const routeBounds = useConfiguratorStore((s) => s.routeBounds)
+  const buildingsEnabled = useConfiguratorStore((s) => s.buildingsEnabled)
+  const shape = useConfiguratorStore((s) => s.shape)
+  const { setTerrainLoading } = useConfiguratorStore()
 
   useEffect(() => {
     setWebglSupported(detectWebGL2())
@@ -61,7 +81,7 @@ export function TerrainViewer() {
   useEffect(() => {
     if (!routeBounds) return
     const padded = padBounds(routeBounds)
-    const quality = detectQuality()
+    const quality = detectDeviceQuality()
     const params = new URLSearchParams({
       minLat: String(padded.minLat),
       maxLat: String(padded.maxLat),
@@ -70,6 +90,7 @@ export function TerrainViewer() {
       quality,
     })
 
+    setTerrainLoading(true)
     fetch(`/api/terrain/data?${params}`)
       .then((r) => r.json())
       .then((data) => {
@@ -83,10 +104,55 @@ export function TerrainViewer() {
       .catch(() => {
         setError('Geländedaten konnten nicht geladen werden.')
       })
+      .finally(() => setTerrainLoading(false))
+  }, [routeBounds, setTerrainLoading])
+
+  // Reset buildings cache when a new GPX is uploaded
+  useEffect(() => {
+    setBuildings(null)
   }, [routeBounds])
 
+  // Fade-in: trigger opacity transition after terrain first arrives
+  useEffect(() => {
+    if (terrain) setCanvasVisible(true)
+  }, [terrain])
+
+  // Lazy-fetch buildings when enabled for the first time (cache in local state)
+  useEffect(() => {
+    if (!buildingsEnabled || !terrainBounds) return
+    if (buildings !== null) return
+    setBuildingsLoading(true)
+    const { minLat, maxLat, minLng, maxLng } = terrainBounds
+    const params = new URLSearchParams({
+      minLat: String(minLat),
+      maxLat: String(maxLat),
+      minLng: String(minLng),
+      maxLng: String(maxLng),
+      buildings: 'true',
+    })
+    fetch(`/api/terrain/data?${params}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success) setBuildings(data.terrain.buildings ?? [])
+      })
+      .catch(() => setBuildings([]))
+      .finally(() => setBuildingsLoading(false))
+  }, [buildingsEnabled, terrainBounds, buildings])
+
   if (webglSupported === null || (routeBounds && !terrain && !error)) {
-    return <div className="h-[480px] w-full rounded-xl bg-ink/5 animate-pulse" />
+    return (
+      <div className="h-[480px] w-full rounded-xl bg-ink/5 flex flex-col items-center justify-center gap-4">
+        <div
+          className="w-3/4 aspect-square max-w-xs bg-ink/10 animate-pulse"
+          style={
+            shape === 'hexagon'
+              ? { clipPath: 'polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)' }
+              : { borderRadius: '50%' }
+          }
+        />
+        <p className="text-sm text-ink/40 animate-pulse">Laden…</p>
+      </div>
+    )
   }
 
   if (!webglSupported) {
@@ -114,14 +180,26 @@ export function TerrainViewer() {
   }
 
   return (
-    <div className="h-[480px] w-full rounded-xl overflow-hidden">
-      <Canvas
-        dpr={[1, 2]}
-        frameloop="demand"
-        camera={{ position: [0, 3, 5], fov: 45 }}
-      >
-        <Scene terrain={terrain} terrainBounds={terrainBounds} />
-      </Canvas>
-    </div>
+    <>
+      <div className={`h-[480px] w-full rounded-xl overflow-hidden transition-opacity duration-200 ${canvasVisible ? 'opacity-100' : 'opacity-0'}`}>
+        <Canvas
+          dpr={mobileDpr}
+          frameloop="demand"
+          camera={{ position: [0, 3, 5], fov: 45 }}
+        >
+          <Scene
+            terrain={terrain}
+            terrainBounds={terrainBounds}
+            buildings={buildings}
+            buildingsEnabled={buildingsEnabled}
+          />
+        </Canvas>
+      </div>
+      {buildingsEnabled && !buildingsLoading && buildings !== null && buildings.length === 0 && (
+        <p className="mt-2 text-center text-xs text-ink/40">
+          Für dieses Gebiet sind keine Gebäudedaten verfügbar.
+        </p>
+      )}
+    </>
   )
 }

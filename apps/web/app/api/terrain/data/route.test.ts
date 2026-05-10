@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('@/lib/terrain/tile-fetch')
+vi.mock('@/lib/buildings/fetch-buildings')
 
 import { GET } from './route'
 import { fetchTerrainGrid } from '@/lib/terrain/tile-fetch'
+import { fetchBuildings } from '@/lib/buildings/fetch-buildings'
 import type { TerrainApiResponse } from '@/types/terrain'
 import type { NextRequest } from 'next/server'
 
@@ -21,6 +23,7 @@ describe('GET /api/terrain/data', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(fetchTerrainGrid).mockResolvedValue({ grid: makeGrid(64), minEle: 400, maxEle: 900 })
+    vi.mocked(fetchBuildings).mockResolvedValue([])
   })
 
   it('returns terrain data for valid bounds and preview quality', async () => {
@@ -85,5 +88,36 @@ describe('GET /api/terrain/data', () => {
     expect(res.status).toBe(200)
     if (body.success) expect(body.terrain.resolution).toBe(128)
     expect(vi.mocked(fetchTerrainGrid)).toHaveBeenCalledWith(expect.anything(), 128, 12)
+  })
+
+  it('includes buildings array when ?buildings=true', async () => {
+    const mockBuildings = [
+      {
+        footprint: [
+          [11.5, 48.1], [11.51, 48.1], [11.51, 48.11], [11.5, 48.11], [11.5, 48.1],
+        ] as [number, number][],
+        height: 9,
+      },
+    ]
+    vi.mocked(fetchBuildings).mockResolvedValueOnce(mockBuildings)
+    const res = await GET(
+      makeRequest({ minLat: '48.1', maxLat: '48.2', minLng: '11.5', maxLng: '11.6', buildings: 'true' })
+    )
+    const body = (await res.json()) as TerrainApiResponse
+    expect(res.status).toBe(200)
+    if (body.success) {
+      expect(body.terrain.buildings).toHaveLength(1)
+      expect(body.terrain.buildings?.[0].height).toBe(9)
+    }
+  })
+
+  it('returns empty buildings array when Overpass fails', async () => {
+    vi.mocked(fetchBuildings).mockRejectedValueOnce(new Error('timeout'))
+    const res = await GET(
+      makeRequest({ minLat: '48.1', maxLat: '48.2', minLng: '11.5', maxLng: '11.6', buildings: 'true' })
+    )
+    const body = (await res.json()) as TerrainApiResponse
+    expect(res.status).toBe(200)
+    if (body.success) expect(body.terrain.buildings).toEqual([])
   })
 })

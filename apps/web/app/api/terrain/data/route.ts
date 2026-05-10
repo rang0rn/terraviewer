@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { fetchTerrainGrid } from '@/lib/terrain/tile-fetch'
+import { fetchBuildings } from '@/lib/buildings/fetch-buildings'
 import { zoomForQuality, resolutionForQuality } from '@/lib/terrain/tile-math'
-import type { TerrainApiResponse, TerrainQuality } from '@/types/terrain'
+import type { TerrainApiResponse, TerrainQuality, BuildingFeature } from '@/types/terrain'
 import type { RouteBounds } from '@/types/configurator'
 
 const VALID_QUALITIES = new Set<string>(['mobile', 'preview', 'desktop'])
@@ -25,15 +26,26 @@ export async function GET(request: NextRequest): Promise<NextResponse<TerrainApi
     ? (qualityParam as TerrainQuality)
     : 'preview'
 
+  const withBuildings = searchParams.get('buildings') === 'true'
   const bounds: RouteBounds = { minLat, maxLat, minLng, maxLng }
   const z = zoomForQuality(quality)
   const resolution = resolutionForQuality(quality)
 
   try {
     const { grid, minEle, maxEle } = await fetchTerrainGrid(bounds, resolution, z)
+
+    let buildings: BuildingFeature[] | undefined
+    if (withBuildings) {
+      try {
+        buildings = await fetchBuildings(bounds)
+      } catch {
+        buildings = []
+      }
+    }
+
     return NextResponse.json({
       success: true,
-      terrain: { grid, resolution, minEle, maxEle },
+      terrain: { grid, resolution, minEle, maxEle, buildings },
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unbekannter Fehler'
